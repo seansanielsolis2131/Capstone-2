@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>AI-nalysis Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Optional: basic styling -->
+  <link rel="stylesheet" href="/static/style.css">
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <header>
+    <h1>AI-nalysis Dashboard</h1>
+  </header>
+
+  <section id="filters">
+    <div>
+      <label>Discipline:</label>
+      <select id="f-stem">
+        <option value="">All</option>
+        <option value="STEM">STEM</option>
+        <option value="Non-STEM">Non-STEM</option>
+      </select>
+    </div>
+    <div>
+      <label>School Type:</label>
+      <select id="f-school">
+        <option value="">All</option>
+        <option value="Private">Private</option>
+        <option value="Public">Public</option>
+      </select>
+    </div>
+    <div>
+      <label>Year Level:</label>
+      <select id="f-year">
+        <option value="">All</option>
+        <option>1</option><option>2</option><option>3</option><option>4</option><option>5+</option>
+      </select>
+    </div>
+    <div>
+      <label><input type="checkbox" id="f-p75"> Show P75 only</label>
+    </div>
+    <button id="apply">Apply Filters</button>
+  </section>
+
+  <section id="kpis">
+    <div class="kpi"><div class="kpi-label">Total Students</div><div id="k-total" class="kpi-value">—</div></div>
+    <div class="kpi"><div class="kpi-label">High Dependency (≥P75)</div><div id="k-high" class="kpi-value">—</div></div>
+    <div class="kpi"><div class="kpi-label">P75 Threshold</div><div id="k-p75" class="kpi-value">—</div></div>
+  </section>
+
+<section id="charts">
+  <div class="row-2col">
+    <div class="chart-card">
+      <h3>Total Dependency Distribution</h3>
+      <canvas id="depHist"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>Cluster Counts</h3>
+      <canvas id="clusterChart"></canvas>
+    </div>
+  </div>
+  <div class="row-2col">
+    <div class="chart-card">
+      <h3>Dependency vs Productivity (color by cluster)</h3>
+      <canvas id="scatterDP"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>Average Dependency by Year Level</h3>
+      <canvas id="yearBreakdown"></canvas>
+    </div>
+  </div>
+  <div class="chart-card">
+    <h3>Profile Mix by Discipline (STEM vs Non-STEM)</h3>
+    <canvas id="profileMix"></canvas>
+  </div>
+  <div class="row-2col">
+    <div class="chart-card">
+      <h3>Confidence Distribution</h3>
+      <canvas id="confHist"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>Productivity Distribution</h3>
+      <canvas id="prodHist"></canvas>
+    </div>
+  </div>
+  <div class="row-2col">
+    <div class="chart-card">
+      <h3>Average Confidence by Cluster</h3>
+      <canvas id="confByCluster"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>Average Productivity by Cluster</h3>
+      <canvas id="prodByCluster"></canvas>
+    </div>
+  </div>
+  <div class="row-2col">
+    <div class="chart-card">
+      <h3>Average Confidence by Discipline (STEM vs Non-STEM)</h3>
+      <canvas id="confByDisc"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>Average Productivity by Discipline (STEM vs Non-STEM)</h3>
+      <canvas id="prodByDisc"></canvas>
+    </div>
+  </div>
+  <div class="chart-card">
+    <h3>Cluster Profiles (Dependency, Confidence, Productivity)</h3>
+    <canvas id="radarChart"></canvas>
+  </div>
+</section>
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>
