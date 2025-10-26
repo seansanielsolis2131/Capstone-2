@@ -4,6 +4,21 @@ import numpy as np
 import os
 import re
 
+# --- JSON sanitizer: replace NaN/Inf with None so JSON is valid ---
+import math
+
+def _json_sanitize(x):
+    if isinstance(x, float):
+        if math.isnan(x) or math.isinf(x):
+            return None
+        return x
+    if isinstance(x, dict):
+        return {k: _json_sanitize(v) for k, v in x.items()}
+    if isinstance(x, list):
+        return [_json_sanitize(v) for v in x]
+    return x
+
+
 def normalize_discipline(x: str):
     if pd.isna(x):
         return np.nan
@@ -28,6 +43,8 @@ def load_data():
         df["Discipline_norm"] = np.nan
     return df
 
+df = load_data()
+
 def apply_filters(df):
     stem = request.args.get("stem")
     school_type = request.args.get("school_type")
@@ -44,6 +61,164 @@ def apply_filters(df):
     if p75_only == "1" and "high_dependency_p75" in df.columns:
         df = df[df["high_dependency_p75"] == 1]
     return df
+
+# ---- REPLACE your existing compute_outcome_mapping with this ----
+def compute_outcome_mapping(df: pd.DataFrame):
+    import numpy as np
+    import pandas as pd
+    import re
+    import math
+
+    d = df.copy()
+
+    # 1) Cluster/profile prep
+    if 'cluster_label' not in d.columns:
+        raise ValueError("Missing 'cluster_label' in data.")
+    d['cluster_label'] = pd.to_numeric(d['cluster_label'], errors='coerce')
+    label_map = {0: "Regular", 1: "Over-reliant", 2: "Strategic"}
+    d['profile'] = d['cluster_label'].map(label_map)
+
+    # 2) Ensure total_dependency exists
+    if 'total_dependency' not in d.columns:
+        dep_cols = [c for c in d.columns if c.endswith('_dep')]
+        if dep_cols:
+            for c in dep_cols:
+                d[c] = pd.to_numeric(d[c], errors='coerce')
+            d['total_dependency'] = d[dep_cols].sum(axis=1)
+        else:
+            d['total_dependency'] = np.nan
+
+    # 3) Numeric coercions
+    for col in ['confidence_mean', 'productivity_mean', 'total_dependency']:
+        if col in d.columns:
+            d[col] = pd.to_numeric(d[col], errors='coerce')
+
+    # 4) high_dependency_p75 normalization
+    if 'high_dependency_p75' in d.columns:
+        hd = d['high_dependency_p75']
+        if hd.dtype == bool:
+            d['high_dependency_p75'] = hd.astype(int)
+        else:
+            d['high_dependency_p75'] = (
+                hd.astype(str).str.strip().str.lower()
+                  .map({'1':1,'true':1,'yes':1,'0':0,'false':0,'no':0})
+                  .fillna(pd.to_numeric(hd, errors='coerce'))
+            ).fillna(0).astype(int)
+    else:
+        d['high_dependency_p75'] = 0
+
+    # 5) GWA parsing
+    #    - keep a clean bucket text (e.g., "1.51-1.75")
+    #    - compute midpoint number for stats (but we'll chart the mode bucket)
+    gwa_col = next((c for c in d.columns if "gwa" in c.lower()), None)
+
+    def _normalize_dashes(s: str) -> str:
+        # replace any dash-like char with simple hyphen
+        return re.sub(r'[–—−‒]', '-', s)
+
+    def _bucket_str(v):
+        if v is None or (isinstance(v, float) and math.isnan(v)):
+            return None
+        s = str(v).strip()
+        s = _normalize_dashes(s).replace(' to ', '-')
+        nums = re.findall(r'\d+(?:\.\d+)?', s)
+        if len(nums) >= 2:
+            return f"{nums[0]}-{nums[1]}"
+        if len(nums) == 1:
+            # single value given; treat as a "bucket" with itself
+            return nums[0]
+        return None
+
+    def _bucket_mid(v):
+        """Return midpoint of bucket; fallback to single number; else NaN."""
+        if v is None or (isinstance(v, float) and math.isnan(v)):
+            return float('nan')
+        s = str(v).strip()
+        s = _normalize_dashes(s).replace(' to ', '-')
+        m = re.match(r'^\s*([0-9]+(?:\.[0-9]+)?)\s*-\s*([0-9]+(?:\.[0-9]+)?)\s*$', s)
+        if m:
+            lo, hi = float(m.group(1)), float(m.group(2))
+            return round((lo + hi) / 2.0, 2)
+        nums = re.findall(r'\d+(?:\.\d+)?', s)
+        if len(nums) == 1:
+            return float(nums[0])
+        return float('nan')
+
+    if gwa_col:
+        d['gwa_bucket'] = d[gwa_col].apply(_bucket_str)
+        d['gwa_num'] = d[gwa_col].apply(_bucket_mid)
+    else:
+        d['gwa_bucket'] = np.nan
+        d['gwa_num'] = np.nan
+
+    d['gwa_num'] = pd.to_numeric(d['gwa_num'], errors='coerce')
+    d.loc[(d['gwa_num'] < 1) | (d['gwa_num'] > 5), 'gwa_num'] = np.nan
+
+    # 6) Group snapshot (per profile)
+    g = d.groupby('profile', dropna=False)
+    snapshot = g.agg(
+        mean_confidence=('confidence_mean', 'mean') if 'confidence_mean' in d.columns else ('cluster_label','size'),
+        mean_productivity=('productivity_mean', 'mean') if 'productivity_mean' in d.columns else ('cluster_label','size'),
+        pct_high_dependency=('high_dependency_p75', lambda s: float(np.mean(s)) * 100 if s.size else np.nan),
+        median_gwa=('gwa_num', 'median')
+    ).reset_index()
+
+    # 7) Add mode GWA bucket + percent share per profile
+    vc = d[['profile','gwa_bucket']].dropna(subset=['profile'])
+    if not vc.empty:
+        # exclude null buckets when computing mode/percent
+        vc_non = vc.dropna(subset=['gwa_bucket'])
+        if not vc_non.empty:
+            counts = vc_non.value_counts().rename('count').reset_index()  # cols: profile, gwa_bucket, count
+            # pick top bucket per profile
+            idx = counts.groupby('profile')['count'].idxmax()
+            mode_df = counts.loc[idx].copy()
+            totals = vc_non.groupby('profile')['gwa_bucket'].count()  # total non-null per profile
+            mode_df['mode_gwa_bucket'] = mode_df['gwa_bucket']
+            mode_df['mode_gwa_pct'] = mode_df.apply(
+                lambda r: float(r['count']) / float(totals.loc[r['profile']]) * 100.0, axis=1
+            )
+            mode_df = mode_df[['profile','mode_gwa_bucket','mode_gwa_pct']]
+            snapshot = snapshot.merge(mode_df, on='profile', how='left')
+        else:
+            snapshot['mode_gwa_bucket'] = None
+            snapshot['mode_gwa_pct'] = np.nan
+    else:
+        snapshot['mode_gwa_bucket'] = None
+        snapshot['mode_gwa_pct'] = np.nan
+
+    # rounding
+    for c in ['mean_confidence','mean_productivity','pct_high_dependency','median_gwa','mode_gwa_pct']:
+        if c in snapshot.columns:
+            snapshot[c] = snapshot[c].astype(float).round(2)
+
+    # 8) Correlation matrix (only for available numeric fields)
+    corr_fields = [c for c in ['total_dependency','confidence_mean','productivity_mean','gwa_num'] if c in d.columns]
+    corr_matrix = None
+    if len(corr_fields) >= 2:
+        corr_df = d[corr_fields].corr().round(2)
+        corr_matrix = {'fields': corr_df.columns.tolist(), 'matrix': corr_df.values.tolist()}
+
+    # 9) Scatter points (unchanged)
+    def pack_points(x_col, y_col):
+        if x_col in d.columns and y_col in d.columns:
+            sub = d[['profile', x_col, y_col]].dropna()
+            return [
+                {'x': float(rx), 'y': float(ry), 'profile': p}
+                for p, rx, ry in sub[['profile', x_col, y_col]].itertuples(index=False, name=None)
+            ]
+        return []
+
+    pts_dep_conf = pack_points('total_dependency', 'confidence_mean')
+    pts_conf_prod = pack_points('confidence_mean', 'productivity_mean')
+
+    return {
+        'snapshot': snapshot.to_dict(orient='records'),
+        'correlation': corr_matrix,
+        'points': {'dep_vs_conf': pts_dep_conf, 'conf_vs_prod': pts_conf_prod}
+    }
+# ---- END replacement ----
+
 
 @app.route("/")
 def index():
@@ -244,6 +419,25 @@ def productivity_by_discipline():
         })
     return jsonify({"groups": results})
 
+# ---- ADD THIS NEW ROUTE NEAR YOUR OTHER /api/... ROUTES ----
+@app.route('/api/outcome-mapping')
+def api_outcome_mapping():
+    try:
+        dff = apply_filters(load_data())   # same filter path as other routes
+        data = compute_outcome_mapping(dff)
+
+        # 🔒 make JSON-safe (convert NaN/Inf -> None)
+        data = _json_sanitize(data)
+
+        print("OM snapshot rows:", len(data['snapshot']),
+              "dep_conf pts:", len(data['points']['dep_vs_conf']),
+              "conf_prod pts:", len(data['points']['conf_vs_prod']))
+        return jsonify({'ok': True, 'data': data})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 400
+
+
+
 @app.route("/api/cluster_centroids")
 def cluster_centroids():
     df = apply_filters(load_data())
@@ -266,3 +460,4 @@ if __name__ == "__main__":
     app.run(debug=True)
 
 print(app.url_map)
+

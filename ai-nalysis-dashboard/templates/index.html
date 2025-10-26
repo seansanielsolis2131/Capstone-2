@@ -50,66 +50,122 @@
     <div class="kpi"><div class="kpi-label">P75 Threshold</div><div id="k-p75" class="kpi-value">—</div></div>
   </section>
 
-<section id="charts">
-  <div class="row-2col">
-    <div class="chart-card">
-      <h3>Total Dependency Distribution</h3>
-      <canvas id="depHist"></canvas>
-    </div>
-    <div class="chart-card">
-      <h3>Cluster Counts</h3>
-      <canvas id="clusterChart"></canvas>
-    </div>
-  </div>
-  <div class="row-2col">
-    <div class="chart-card">
-      <h3>Dependency vs Productivity (color by cluster)</h3>
-      <canvas id="scatterDP"></canvas>
-    </div>
-    <div class="chart-card">
-      <h3>Average Dependency by Year Level</h3>
-      <canvas id="yearBreakdown"></canvas>
-    </div>
-  </div>
-  <div class="chart-card">
-    <h3>Profile Mix by Discipline (STEM vs Non-STEM)</h3>
-    <canvas id="profileMix"></canvas>
-  </div>
-  <div class="row-2col">
-    <div class="chart-card">
-      <h3>Confidence Distribution</h3>
-      <canvas id="confHist"></canvas>
-    </div>
-    <div class="chart-card">
-      <h3>Productivity Distribution</h3>
-      <canvas id="prodHist"></canvas>
-    </div>
-  </div>
-  <div class="row-2col">
-    <div class="chart-card">
-      <h3>Average Confidence by Cluster</h3>
-      <canvas id="confByCluster"></canvas>
-    </div>
-    <div class="chart-card">
-      <h3>Average Productivity by Cluster</h3>
-      <canvas id="prodByCluster"></canvas>
-    </div>
-  </div>
-  <div class="row-2col">
-    <div class="chart-card">
-      <h3>Average Confidence by Discipline (STEM vs Non-STEM)</h3>
-      <canvas id="confByDisc"></canvas>
-    </div>
-    <div class="chart-card">
-      <h3>Average Productivity by Discipline (STEM vs Non-STEM)</h3>
-      <canvas id="prodByDisc"></canvas>
-    </div>
-  </div>
-  <div class="chart-card">
-    <h3>Cluster Profiles (Dependency, Confidence, Productivity)</h3>
-    <canvas id="radarChart"></canvas>
+  <section id="recommendations" class="panel">
+  <h3>Recommendations</h3>
+  <p class="subtle">These suggestions are based on a cluster’s average GWA, Dependency, Confidence, and Productivity.</p>
+
+  <div id="reco-grid" class="reco-grid">
+    <!-- Cards will be injected by buildRecommendations() -->
   </div>
 </section>
-  <script src="/static/dashboard.js"></script>
+
+<section id="charts">
+    <!-- TIER 1: Primary insights -->
+    <div class="row-2col">
+      <div class="chart-card">
+        <h3>Students by Profile</h3>
+        <canvas id="clusterChart"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>Dependency vs Productivity (color by profile)</h3>
+        <canvas id="scatterDP"></canvas>
+      </div>
+    </div>
+
+    <!-- Immediate context for dependency (optional but near the top) -->
+    <div class="chart-card">
+      <h3>Total Dependency Distribution (with P75)</h3>
+      <canvas id="depHist"></canvas>
+    </div>
+
+    <!-- TIER 2: Cohort drivers -->
+    <div class="row-2col">
+      <div class="chart-card">
+        <h3>Average Dependency by Year Level</h3>
+        <canvas id="yearBreakdown"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>Profile Mix by Discipline (STEM vs Non-STEM)</h3>
+        <canvas id="profileMix"></canvas>
+      </div>
+    </div>
+
+    <!-- TIER 3: Distributions -->
+    <div class="row-2col">
+      <div class="chart-card">
+        <h3>Confidence Distribution</h3>
+        <canvas id="confHist"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>Productivity Distribution</h3>
+        <canvas id="prodHist"></canvas>
+      </div>
+    </div>
+
+    <!-- TIER 4: Profile diagnostics -->
+    <div class="row-2col">
+      <div class="chart-card">
+        <h3>Average Confidence by Profile</h3>
+        <canvas id="confByCluster"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>Average Productivity by Profile</h3>
+        <canvas id="prodByCluster"></canvas>
+      </div>
+    </div>
+
+    <!-- TIER 5: Discipline diagnostics -->
+    <div class="row-2col">
+      <div class="chart-card">
+        <h3>Average Confidence by Discipline (STEM vs Non-STEM)</h3>
+        <canvas id="confByDisc"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>Average Productivity by Discipline (STEM vs Non-STEM)</h3>
+        <canvas id="prodByDisc"></canvas>
+      </div>
+    </div>
+
+    <!-- Diagnostic summary last -->
+    <div class="chart-card">
+      <h3>Profile Centroids (Dependency, Confidence, Productivity)</h3>
+      <canvas id="radarChart"></canvas>
+    </div>
+</section>
+<!-- ==== Learning Outcome Mapping Section ==== -->
+<section id="outcome-mapping" class="card">
+  <h2>Learning Outcome Mapping</h2>
+
+  <div class="grid-2">
+    <div class="panel">
+      <h3>Cluster Averages: Confidence & Productivity</h3>
+      <canvas id="chartClusterBars"></canvas>
+    </div>
+    <div class="panel">
+      <h3>GWA by Cluster (Mean)</h3>
+      <canvas id="chartGwaBars"></canvas>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="panel">
+      <h3>Total Dependency vs Confidence</h3>
+      <canvas id="chartDepConf"></canvas>
+    </div>
+    <div class="panel">
+      <h3>Confidence vs Productivity</h3>
+      <canvas id="chartConfProd"></canvas>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Correlation Snapshot</h3>
+    <div id="corrTable" class="table-like"></div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+<script src="/static/dashboard.js"></script>
+
 </body>
 </html>
